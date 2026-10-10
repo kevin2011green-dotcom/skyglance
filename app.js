@@ -88,7 +88,7 @@ function fetchWeather({ lat, lon }, unitSystem) {
   const params = new URLSearchParams({
     latitude: lat.toFixed(4),
     longitude: lon.toFixed(4),
-    current: 'temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m',
+    current: 'temperature_2m,apparent_temperature,relative_humidity_2m,is_day,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m',
     hourly: 'temperature_2m,precipitation_probability,weather_code,is_day',
     daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset,uv_index_max',
     timezone: 'auto',
@@ -243,8 +243,6 @@ function renderWeather(weather, unitSystem) {
   const windUnit = unitSystem === 'imperial' ? 'mph' : 'km/h';
   const now = describe(cur.weather_code, cur.is_day);
 
-  document.body.classList.toggle('day', Boolean(cur.is_day));
-  document.querySelector('meta[name="theme-color"]').content = cur.is_day ? '#2a6fc4' : '#0f1b33';
   $('units').textContent = unitSystem === 'imperial' ? '°F' : '°C';
 
   $('now-icon').textContent = now.icon;
@@ -409,10 +407,8 @@ function renderSolar(solar) {
 
 function renderSpaceSummary(state) {
   const parts = [];
-  if (state.kp) {
-    const past = state.kp.filter((r) => new Date(r.time).getTime() <= Date.now());
-    if (past.length) parts.push(`Kp ${past[past.length - 1].kp.toFixed(1)}`);
-  }
+  const kp = latestKp(state.kp);
+  if (kp !== null) parts.push(`Kp ${kp.toFixed(1)}`);
   if (state.solar && state.solar.current) parts.push(`Flares ${state.solar.current}`);
   $('space-summary').textContent = parts.join(' · ');
   $('space').hidden = !(state.kp || state.solar);
@@ -424,6 +420,8 @@ function renderAll(state) {
   if (state.kp) renderKp(state.kp);
   if (state.solar) renderSolar(state.solar);
   renderSpaceSummary(state);
+  skyState = state;
+  applySky(state);
   $('place').textContent = state.place || 'Your location';
   if (state.savedAt) {
     const when = new Date(state.savedAt);
@@ -432,6 +430,152 @@ function renderAll(state) {
     $('updated').textContent = `Updated ${sameDay ? time : `${when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${time}`}`;
   }
 }
+
+// ---------- living sky ----------
+
+// [top, bottom] background colours for each part of the day.
+const SKY = {
+  night: ['#060a18', '#131c3a'],
+  twilight: ['#11163a', '#4a3b6b'],
+  sunrise: ['#33558f', '#d98c78'],
+  day: ['#2467bd', '#69aee6'],
+  golden: ['#3b6fb0', '#d9a25f'],
+  dusk: ['#2b2a66', '#c8684f'],
+};
+const MINUTE = 60 * 1000;
+const DAY = 24 * 60 * MINUTE;
+
+// Preview switches for effects that are rare in real life, e.g.
+// ?sky=dusk&wx=storm&kp=9&flare=X  (sky: night twilight sunrise day golden dusk; wx: clear cloudy overcast rain storm)
+const demo = typeof location === 'undefined' ? {} : Object.fromEntries(new URLSearchParams(location.search));
+
+let skyState = null;
+
+function mixHex(a, b, t) {
+  const pa = parseInt(a.slice(1), 16);
+  const pb = parseInt(b.slice(1), 16);
+  const ch = (shift) => Math.round(((pa >> shift) & 255) * (1 - t) + ((pb >> shift) & 255) * t);
+  return `#${((1 << 24) | (ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).slice(1)}`;
+}
+
+function skyPhase(now, sunrise, sunset) {
+  if (now < sunrise - 90 * MINUTE || now >= sunset + 90 * MINUTE) return 'night';
+  if (now < sunrise - 30 * MINUTE) return 'twilight';
+  if (now < sunrise + 45 * MINUTE) return 'sunrise';
+  if (now < sunset - 75 * MINUTE) return 'day';
+  if (now < sunset - 15 * MINUTE) return 'golden';
+  if (now < sunset + 45 * MINUTE) return 'dusk';
+  return 'twilight';
+}
+
+function skyWeather(code, cloud) {
+  if (code >= 95) return 'storm';
+  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return 'rain';
+  if (code === 3 || code === 45 || code === 48 || code >= 71 || cloud > 85) return 'overcast';
+  if (code === 2 || cloud > 40) return 'cloudy';
+  return 'clear';
+}
+
+// Kp needed before the aurora glow appears; a rough guide by latitude, not a forecast.
+function auroraThreshold(lat) {
+  const a = Math.abs(lat);
+  if (a >= 55) return 5;
+  if (a >= 45) return 6;
+  if (a >= 35) return 7;
+  return 8;
+}
+
+function latestKp(rows) {
+  const past = (rows || []).filter((r) => new Date(r.time).getTime() <= Date.now());
+  return past.length ? past[past.length - 1].kp : null;
+}
+
+// 0 = new moon, 0.5 = full, counted from the new moon of 6 Jan 2000.
+function moonPhase(ms) {
+  const cycles = (ms - Date.UTC(2000, 0, 6, 18, 14)) / DAY / 29.530588853;
+  return ((cycles % 1) + 1) % 1;
+}
+
+function moonSvg(phase) {
+  const R = 18;
+  const waning = phase > 0.5;
+  const f = waning ? 1 - phase : phase;
+  const rx = (R * Math.abs(Math.cos(2 * Math.PI * f))).toFixed(2);
+  const lit = `M0 ${-R}A${R} ${R} 0 0 1 0 ${R}A${rx} ${R} 0 0 ${f < 0.25 ? 0 : 1} 0 ${-R}Z`;
+  return `<svg viewBox="-20 -20 40 40"><circle r="${R}" fill="#2a3150"/><path d="${lit}" fill="#f1f3f8"${waning ? ' transform="scale(-1 1)"' : ''}/></svg>`;
+}
+
+function applySky(state) {
+  if (!state || !state.weather) return;
+  const weather = state.weather;
+  const cur = weather.current;
+  const daily = weather.daily;
+  const at = (iso) => Date.parse(`${iso}Z`);
+
+  // Work in the forecast location's own clock. A saved forecast may be days old,
+  // so pick today's row when it exists and otherwise shift the nearest one.
+  let now = Date.now() + weather.utc_offset_seconds * 1000;
+  const dayDiff = Math.floor((now - at(`${daily.time[0]}T00:00`)) / DAY);
+  const row = Math.min(Math.max(dayDiff, 0), daily.time.length - 1);
+  const shift = (dayDiff - row) * DAY;
+  const sunrise = at(daily.sunrise[row]) + shift;
+  const sunset = at(daily.sunset[row]) + shift;
+
+  const demoTimes = {
+    night: sunset + 5 * 60 * MINUTE,
+    twilight: sunrise - 60 * MINUTE,
+    sunrise: sunrise + 10 * MINUTE,
+    day: (sunrise + sunset) / 2 - 90 * MINUTE,
+    golden: sunset - 45 * MINUTE,
+    dusk: sunset + 10 * MINUTE,
+  };
+  if (demoTimes[demo.sky]) now = demoTimes[demo.sky];
+
+  const phase = skyPhase(now, sunrise, sunset);
+  const cloud = cur.cloud_cover ?? 0;
+  const wx = demo.wx || skyWeather(cur.weather_code, cloud);
+  const dark = phase === 'night' || phase === 'twilight';
+
+  const greyAmount = { cloudy: 0.25, overcast: 0.65, rain: 0.75, storm: 0.88 }[wx] || 0;
+  const greyTone = wx === 'storm' ? (dark ? '#0d0f15' : '#343a46') : (dark ? '#1a1e28' : '#6b7684');
+  const top = mixHex(SKY[phase][0], greyTone, greyAmount);
+  document.documentElement.style.setProperty('--bg-top', top);
+  document.documentElement.style.setProperty('--bg-bottom', mixHex(SKY[phase][1], greyTone, greyAmount));
+  document.querySelector('meta[name="theme-color"]').content = top;
+
+  const starlight = { night: 1, twilight: 0.4 }[phase] || 0;
+  const clearness = wx === 'clear' || wx === 'cloudy' ? 1 - (demo.wx ? 0 : cloud / 100) * 0.8 : 0;
+  $('stars').style.opacity = starlight * clearness;
+  $('rain').style.opacity = wx === 'rain' || wx === 'storm' ? 1 : 0;
+  $('sky').className = wx === 'storm' ? 'storm' : '';
+
+  const kp = demo.kp ? Number(demo.kp) : latestKp(state.kp);
+  const auroraOn = kp !== null && state.coords && kp >= auroraThreshold(state.coords.lat);
+  $('aurora').style.opacity = auroraOn ? (dark ? 1 : 0.55) : 0;
+
+  // The sun crosses the top of the screen between sunrise and sunset; the moon takes the night shift.
+  const isDay = now >= sunrise && now < sunset;
+  let progress;
+  if (isDay) progress = (now - sunrise) / (sunset - sunrise);
+  else if (now < sunrise) progress = (now - (sunset - DAY)) / (sunrise - (sunset - DAY));
+  else progress = (now - sunset) / (sunrise + DAY - sunset);
+
+  const orb = $('orb');
+  orb.style.left = `${8 + progress * 84}%`;
+  orb.style.top = `${130 - Math.sin(Math.PI * progress) * 95}px`;
+  orb.style.opacity = { clear: 1, cloudy: 0.8, overcast: 0.3, rain: 0.15, storm: 0 }[wx];
+  if (isDay) {
+    const flaring = /^[MX]/.test(demo.flare || (state.solar && state.solar.current) || '');
+    orb.className = `sun${flaring ? ' flaring' : ''}`;
+    orb.innerHTML = '';
+  } else {
+    orb.className = 'moon';
+    orb.innerHTML = moonSvg(moonPhase(Date.now()));
+  }
+}
+
+// Keep the sun moving and the colours turning while the app sits open.
+setInterval(() => applySky(skyState), MINUTE);
 
 // ---------- radar ----------
 

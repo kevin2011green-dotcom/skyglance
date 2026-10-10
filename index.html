@@ -14,22 +14,70 @@
   :root {
     --bg-top: #0f1b33;
     --bg-bottom: #1d2f55;
-    --card: rgba(255, 255, 255, 0.09);
-    --card-border: rgba(255, 255, 255, 0.14);
+    --card: rgba(12, 22, 48, 0.36);
+    --card-border: rgba(255, 255, 255, 0.16);
     --text: #f3f6fc;
-    --muted: #b3c0d9;
+    --muted: #c6d0e4;
     --accent: #ffd166;
     --kp-quiet: #5ad19a;
     --kp-active: #ffd166;
     --kp-storm: #ff7b6b;
   }
-  body.day {
-    --bg-top: #2a6fc4;
-    --bg-bottom: #6fb1e8;
-    --card: rgba(255, 255, 255, 0.17);
-    --card-border: rgba(255, 255, 255, 0.28);
-    --muted: #e1ecfa;
+  /* Living sky: a fixed backdrop whose colours and effects follow the real sky. */
+  #sky {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    background: linear-gradient(var(--bg-top), var(--bg-bottom));
   }
+  #sky .layer { position: absolute; inset: 0; opacity: 0; transition: opacity 1.5s; }
+  #stars {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220' fill='white'%3E%3Ccircle cx='12' cy='28' r='1' fill-opacity='0.9'/%3E%3Ccircle cx='48' cy='9' r='0.7' fill-opacity='0.6'/%3E%3Ccircle cx='83' cy='44' r='1.1' fill-opacity='0.8'/%3E%3Ccircle cx='121' cy='17' r='0.6' fill-opacity='0.5'/%3E%3Ccircle cx='158' cy='36' r='0.9' fill-opacity='0.9'/%3E%3Ccircle cx='201' cy='12' r='0.7' fill-opacity='0.6'/%3E%3Ccircle cx='30' cy='92' r='0.6' fill-opacity='0.5'/%3E%3Ccircle cx='67' cy='121' r='1' fill-opacity='0.8'/%3E%3Ccircle cx='104' cy='86' r='0.7' fill-opacity='0.7'/%3E%3Ccircle cx='143' cy='108' r='1.2' fill-opacity='0.9'/%3E%3Ccircle cx='187' cy='79' r='0.6' fill-opacity='0.5'/%3E%3Ccircle cx='213' cy='131' r='0.8' fill-opacity='0.7'/%3E%3Ccircle cx='19' cy='163' r='0.9' fill-opacity='0.8'/%3E%3Ccircle cx='58' cy='197' r='0.6' fill-opacity='0.5'/%3E%3Ccircle cx='97' cy='171' r='0.8' fill-opacity='0.6'/%3E%3Ccircle cx='134' cy='204' r='0.7' fill-opacity='0.7'/%3E%3Ccircle cx='171' cy='158' r='1' fill-opacity='0.9'/%3E%3Ccircle cx='206' cy='189' r='0.6' fill-opacity='0.5'/%3E%3C/svg%3E");
+    animation: twinkle 5s ease-in-out infinite alternate;
+  }
+  #rain {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cpath stroke='white' stroke-opacity='.3' d='M20 5l-3 12M60 30l-3 12M35 55l-3 12M72 62l-3 12'/%3E%3C/svg%3E");
+    animation: rain 1s linear infinite;
+  }
+  #flash { background: #dfe8ff; }
+  #sky.storm #flash { animation: flash 11s linear infinite; }
+  #aurora {
+    background:
+      radial-gradient(120% 55% at 30% 0%, rgba(80, 255, 170, 0.5), transparent 70%),
+      radial-gradient(100% 45% at 80% 0%, rgba(150, 110, 255, 0.32), transparent 70%);
+    transform-origin: top;
+    animation: sway 12s ease-in-out infinite alternate;
+  }
+  #orb {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    margin: -20px 0 0 -20px;
+    opacity: 0;
+    transition: opacity 1.5s;
+  }
+  #orb.sun {
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff6d6 0%, #ffd166 55%, #ffb84d 100%);
+    box-shadow: 0 0 24px 8px rgba(255, 209, 102, 0.55);
+  }
+  #orb.sun.flaring { animation: flare 2.4s ease-in-out infinite; }
+  #orb.moon { filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.35)); }
+  #orb svg { display: block; width: 100%; height: 100%; }
+  @keyframes twinkle { to { filter: brightness(0.7); } }
+  @keyframes rain { to { background-position: -80px 320px; } }
+  @keyframes flash { 0%, 61%, 63%, 65%, 100% { opacity: 0; } 62% { opacity: 0.35; } 64% { opacity: 0.2; } }
+  @keyframes sway { to { transform: translateX(-6%) scaleY(1.15); } }
+  @keyframes flare {
+    50% { box-shadow: 0 0 34px 16px rgba(255, 140, 60, 0.8), 15px -15px 18px 2px rgba(255, 90, 40, 0.75); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #sky .layer, #orb { animation: none !important; }
+  }
+  header, .section-title, #space > summary, footer { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45); }
+  .maker { margin-top: 10px; letter-spacing: 0.03em; }
+
   * { box-sizing: border-box; }
   html { background: var(--bg-top); }
   body {
@@ -37,7 +85,6 @@
     min-height: 100vh;
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     color: var(--text);
-    background: linear-gradient(var(--bg-top), var(--bg-bottom)) fixed;
     -webkit-font-smoothing: antialiased;
   }
   main {
@@ -173,6 +220,13 @@
 </style>
 </head>
 <body>
+<div id="sky" aria-hidden="true">
+  <div class="layer" id="stars"></div>
+  <div class="layer" id="aurora"></div>
+  <div id="orb"></div>
+  <div class="layer" id="rain"></div>
+  <div class="layer" id="flash"></div>
+</div>
 <main>
   <header>
     <div class="where">
@@ -259,6 +313,7 @@
     Radar by <a href="https://www.rainviewer.com/">RainViewer</a> ·
     Space weather by <a href="https://www.swpc.noaa.gov/">NOAA SWPC</a> ·
     Place names by <a href="https://www.bigdatacloud.com/">BigDataCloud</a>
+    <div class="maker">Built by Kevin with Claude · October 2026 · v1.4</div>
   </footer>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
