@@ -119,6 +119,62 @@ async function fetchKp() {
     .filter((r) => Number.isFinite(r.kp));
 }
 
+const SWPC = 'https://services.swpc.noaa.gov';
+
+function flareClass(flux) {
+  if (!(flux > 0)) return null;
+  const bands = [['X', 1e-4], ['M', 1e-5], ['C', 1e-6], ['B', 1e-7], ['A', 1e-8]];
+  const [letter, base] = bands.find(([, floor]) => flux >= floor) || bands[bands.length - 1];
+  return `${letter}${(flux / base).toFixed(1)}`;
+}
+
+// First line of a NOAA bulletin that reads like "ALERT: ..." or "EXTENDED WARNING: ...".
+function alertHeadline(message) {
+  const line = message.split(/\r?\n/).find((l) => /^[A-Z][A-Z ]*(ALERT|WARNING|WATCH|SUMMARY)[A-Z ]*:/.test(l));
+  return line ? line.replace(/\s+/g, ' ').trim() : null;
+}
+
+// Solar flare feeds. Each one is optional, so a single outage doesn't blank the card.
+async function fetchSolar() {
+  const [flares, xrays, scales, alerts] = await Promise.allSettled([
+    getJson(`${SWPC}/json/goes/primary/xray-flares-latest.json`),
+    getJson(`${SWPC}/json/goes/primary/xrays-6-hour.json`),
+    getJson(`${SWPC}/products/noaa-scales.json`),
+    getJson(`${SWPC}/products/alerts.json`),
+  ]);
+  const solar = {};
+
+  if (xrays.status === 'fulfilled') {
+    // The 0.1-0.8nm band is the one flare classes are defined on.
+    solar.flux = xrays.value
+      .filter((r) => r.energy === '0.1-0.8nm' && r.flux > 0)
+      .map((r) => [Date.parse(r.time_tag), r.flux]);
+  }
+  if (flares.status === 'fulfilled' && flares.value.length) {
+    const f = flares.value[flares.value.length - 1];
+    solar.current = f.current_class;
+    if (f.max_class && f.max_time) solar.latest = { cls: f.max_class, time: f.max_time };
+  }
+  if (!solar.current && solar.flux && solar.flux.length) {
+    solar.current = flareClass(solar.flux[solar.flux.length - 1][1]);
+  }
+  if (scales.status === 'fulfilled') {
+    solar.odds = ['1', '2', '3']
+      .map((key) => scales.value[key])
+      .filter((day) => day && day.R && day.R.MinorProb != null)
+      .map((day) => ({ date: day.DateStamp, m: Number(day.R.MinorProb), x: Number(day.R.MajorProb) }));
+  }
+  if (alerts.status === 'fulfilled') {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    solar.alerts = alerts.value
+      .map((a) => ({ time: Date.parse(`${a.issue_datetime.replace(' ', 'T')}Z`), text: alertHeadline(a.message) }))
+      .filter((a) => a.text && a.time >= cutoff)
+      .sort((a, b) => b.time - a.time)
+      .slice(0, 5);
+  }
+  return Object.keys(solar).length ? solar : null;
+}
+
 // ---------- formatting ----------
 
 function describe(code, isDay) {
@@ -148,6 +204,22 @@ function kpLevel(kp) {
   if (kp >= 5) return ['G1 minor storm', 'Aurora possible across the northern-tier US states.'];
   if (kp >= 4) return ['Active', 'Aurora possible near the US–Canada border.'];
   return ['Quiet', 'Aurora limited to the far north.'];
+}
+
+function flareLevel(cls) {
+  const letter = (cls || '')[0];
+  if (letter === 'X') return ['Major flare level', 'var(--kp-storm)'];
+  if (letter === 'M') return ['Moderate flare level', 'var(--kp-active)'];
+  if (letter === 'C') return ['Minor activity', 'var(--kp-quiet)'];
+  return ['Quiet', 'var(--kp-quiet)'];
+}
+
+// Epoch ms -> "5:33 AM", with the date added when it isn't today.
+function localTime(ms) {
+  const when = new Date(ms);
+  const time = when.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  if (when.toDateString() === new Date().toDateString()) return time;
+  return `${when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}, ${time}`;
 }
 
 function kpColor(kp) {
@@ -243,9 +315,7 @@ function renderWeather(weather, unitSystem) {
     return row;
   }));
 
-  $('current').hidden = false;
-  $('hourly-card').hidden = false;
-  $('daily-card').hidden = false;
+  $('local').hidden = false;
 }
 
 function renderKp(rows) {
@@ -283,10 +353,77 @@ function renderKp(rows) {
   $('kp-card').hidden = false;
 }
 
+// X-ray flux on a log scale, with one band per flare class (B, C, M, X).
+function flareChartSvg(points) {
+  const W = 320, H = 110, LEFT = 14, MIN = -7.5, MAX = -3.5;
+  const t0 = points[0][0];
+  const span = points[points.length - 1][0] - t0 || 1;
+  const yOf = (exp) => H - ((Math.min(MAX, Math.max(MIN, exp)) - MIN) / (MAX - MIN)) * H;
+  const path = points
+    .map(([t, flux]) => `${(LEFT + ((t - t0) / span) * (W - LEFT)).toFixed(1)},${yOf(Math.log10(flux)).toFixed(1)}`)
+    .join(' ');
+  const grid = [-7, -6, -5, -4]
+    .map((exp) => `<line class="grid" x1="${LEFT}" x2="${W}" y1="${yOf(exp)}" y2="${yOf(exp)}"/>`)
+    .join('');
+  const bands = [['B', -6.5], ['C', -5.5], ['M', -4.5], ['X', -3.8]]
+    .map(([letter, exp]) => `<text class="band" x="0" y="${yOf(exp) + 3}">${letter}</text>`)
+    .join('');
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="X-ray flux, last 6 hours">${grid}${bands}<polyline class="line" points="${path}"/></svg>`;
+}
+
+function renderSolar(solar) {
+  const [level, color] = flareLevel(solar.current);
+  $('flare-now').textContent = solar.current || '–';
+  $('flare-level').textContent = solar.current ? level : '';
+  $('flare-level').style.color = color;
+  $('flare-latest').textContent = solar.latest
+    ? `Latest flare: ${solar.latest.cls}, peaked ${localTime(Date.parse(solar.latest.time))}.`
+    : '';
+
+  const hasFlux = Boolean(solar.flux && solar.flux.length > 1);
+  $('flare-chart').innerHTML = hasFlux ? flareChartSvg(solar.flux) : '';
+  $('flare-caption').hidden = !hasFlux;
+
+  const odds = solar.odds || [];
+  $('odds-title').hidden = !odds.length;
+  $('flare-odds').replaceChildren(...odds.map((day, i) => {
+    const name = i === 0
+      ? 'Today'
+      : new Date(`${day.date}T12:00`).toLocaleDateString(undefined, { weekday: 'short' });
+    const box = el('div', 'stat');
+    box.append(el('div', 'label', name), el('div', 'value', `M ${day.m}% · X ${day.x}%`));
+    return box;
+  }));
+
+  const alerts = solar.alerts || [];
+  $('alerts').replaceChildren(...(alerts.length
+    ? alerts.map((a) => {
+      const row = el('div', 'alert');
+      row.append(el('div', null, a.text), el('div', 'when', localTime(a.time)));
+      return row;
+    })
+    : [el('div', 'alert', solar.alerts ? 'None issued.' : 'Alerts unavailable right now.')]));
+
+  $('solar-card').hidden = false;
+}
+
+function renderSpaceSummary(state) {
+  const parts = [];
+  if (state.kp) {
+    const past = state.kp.filter((r) => new Date(r.time).getTime() <= Date.now());
+    if (past.length) parts.push(`Kp ${past[past.length - 1].kp.toFixed(1)}`);
+  }
+  if (state.solar && state.solar.current) parts.push(`Flares ${state.solar.current}`);
+  $('space-summary').textContent = parts.join(' · ');
+  $('space').hidden = !(state.kp || state.solar);
+}
+
 function renderAll(state) {
   if (!state) return;
   if (state.weather) renderWeather(state.weather, state.units);
   if (state.kp) renderKp(state.kp);
+  if (state.solar) renderSolar(state.solar);
+  renderSpaceSummary(state);
   $('place').textContent = state.place || 'Your location';
   if (state.savedAt) {
     const when = new Date(state.savedAt);
@@ -326,10 +463,11 @@ async function refresh() {
     }
 
     if (!saved) setStatus('Loading weather…');
-    const [weather, place, kp] = await Promise.allSettled([
+    const [weather, place, kp, solar] = await Promise.allSettled([
       fetchWeather(coords, units),
       fetchPlace(coords),
       fetchKp(),
+      fetchSolar(),
     ]);
 
     if (weather.status !== 'fulfilled') {
@@ -348,6 +486,7 @@ async function refresh() {
       weather: weather.value,
       place: place.status === 'fulfilled' && place.value ? place.value : saved && saved.place,
       kp: kp.status === 'fulfilled' && kp.value.length ? kp.value : saved && saved.kp,
+      solar: solar.status === 'fulfilled' && solar.value ? solar.value : saved && saved.solar,
       savedAt: Date.now(),
     };
     writeStore(STORE_KEY, JSON.stringify(state));
@@ -367,6 +506,11 @@ $('units').addEventListener('click', () => {
   writeStore(UNITS_KEY, units);
   refresh();
 });
+
+// Remember whether the space weather section was left open or closed.
+const SPACE_KEY = 'skyglance:space-open';
+$('space').open = readStore(SPACE_KEY) !== 'no';
+$('space').addEventListener('toggle', () => writeStore(SPACE_KEY, $('space').open ? 'yes' : 'no'));
 
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;

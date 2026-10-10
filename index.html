@@ -82,7 +82,7 @@
     padding: 16px;
     margin-bottom: 12px;
   }
-  .card h2 {
+  .card h3 {
     margin: 0 0 12px;
     font-size: 0.78rem;
     font-weight: 600;
@@ -130,6 +130,35 @@
   .kp-labels span { flex: 1; text-align: center; font-size: 0.62rem; color: var(--muted); }
   .kp-caption { font-size: 0.75rem; color: var(--muted); margin-top: 8px; }
 
+  .section-title { font-size: 1.05rem; font-weight: 600; margin: 4px 4px 10px; }
+  #space { margin-top: 20px; }
+  #space > summary {
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 4px;
+    margin-bottom: 10px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #space > summary::-webkit-details-marker { display: none; }
+  #space > summary::before { content: "▸"; transition: transform 0.15s; }
+  #space[open] > summary::before { transform: rotate(90deg); }
+  #space-summary { margin-left: auto; font-size: 0.85rem; font-weight: 400; color: var(--muted); }
+
+  .flare-chart svg { display: block; width: 100%; height: auto; }
+  .flare-chart .grid { stroke: var(--card-border); stroke-width: 1; }
+  .flare-chart .band { fill: var(--muted); font-size: 9px; }
+  .flare-chart .line { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linejoin: round; }
+  .sub-title { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin: 16px 0 6px; }
+  .alert { font-size: 0.85rem; padding: 6px 0; }
+  .alert + .alert { border-top: 1px solid var(--card-border); }
+  .alert .when { color: var(--muted); font-size: 0.75rem; }
+
   footer { text-align: center; font-size: 0.72rem; color: var(--muted); margin-top: 18px; }
   footer a { color: inherit; }
   [hidden] { display: none !important; }
@@ -148,7 +177,10 @@
 
   <div id="status" role="status"></div>
 
-  <section class="card" id="current" hidden>
+  <section id="local" hidden>
+  <h2 class="section-title">Local weather</h2>
+
+  <section class="card" id="current">
     <div class="now">
       <div class="icon" id="now-icon"></div>
       <div>
@@ -160,18 +192,23 @@
     <div class="stats" id="stats"></div>
   </section>
 
-  <section class="card" id="hourly-card" hidden>
-    <h2>Next 24 hours</h2>
+  <section class="card" id="hourly-card">
+    <h3>Next 24 hours</h3>
     <div class="hourly" id="hourly"></div>
   </section>
 
-  <section class="card" id="daily-card" hidden>
-    <h2>7-day forecast</h2>
+  <section class="card" id="daily-card">
+    <h3>7-day forecast</h3>
     <div id="daily"></div>
   </section>
 
+  </section>
+
+  <details id="space" hidden>
+  <summary>Space weather <span id="space-summary"></span></summary>
+
   <section class="card" id="kp-card" hidden>
-    <h2>Aurora activity (Kp index)</h2>
+    <h3>Aurora activity (Kp index)</h3>
     <div class="kp-head">
       <div class="kp-value" id="kp-value"></div>
       <div class="kp-level" id="kp-level"></div>
@@ -182,9 +219,26 @@
     <div class="kp-caption">Last 24 hours, then NOAA's forecast for the next 24 (faded). Times are local.</div>
   </section>
 
+  <section class="card" id="solar-card" hidden>
+    <h3>Solar flare activity</h3>
+    <div class="kp-head">
+      <div class="kp-value" id="flare-now"></div>
+      <div class="kp-level" id="flare-level"></div>
+    </div>
+    <div class="kp-hint" id="flare-latest"></div>
+    <div class="flare-chart" id="flare-chart"></div>
+    <div class="kp-caption" id="flare-caption">The Sun's X-ray output over the last 6 hours. Flares show up as spikes; M and X are the strong ones.</div>
+    <div class="sub-title" id="odds-title">Chance of a strong flare</div>
+    <div class="stats" id="flare-odds"></div>
+    <div class="sub-title">NOAA alerts, last 24 hours</div>
+    <div id="alerts"></div>
+  </section>
+
+  </details>
+
   <footer>
     Weather by <a href="https://open-meteo.com/">Open-Meteo</a> ·
-    Kp index by <a href="https://www.swpc.noaa.gov/">NOAA SWPC</a> ·
+    Space weather by <a href="https://www.swpc.noaa.gov/">NOAA SWPC</a> ·
     Place names by <a href="https://www.bigdatacloud.com/">BigDataCloud</a>
   </footer>
 </main>
