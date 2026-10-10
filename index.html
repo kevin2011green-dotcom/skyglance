@@ -9,6 +9,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
 <style>
   :root {
     --bg-top: #0f1b33;
@@ -130,6 +131,13 @@
   .kp-labels span { flex: 1; text-align: center; font-size: 0.62rem; color: var(--muted); }
   .kp-caption { font-size: 0.75rem; color: var(--muted); margin-top: 8px; }
 
+  #radar-map { height: 300px; border-radius: 12px; overflow: hidden; background: #0f1b33; z-index: 0; }
+  /* Turns the standard light street map into a dark one so radar colours stand out. */
+  #radar-map .basemap { filter: invert(1) hue-rotate(180deg) brightness(0.9) contrast(0.9); }
+  .radar-bar { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+  #radar-time { font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+  .radar-bar .kp-caption { margin: 0 0 0 auto; text-align: right; }
+
   .section-title { font-size: 1.05rem; font-weight: 600; margin: 4px 4px 10px; }
   #space { margin-top: 20px; }
   #space > summary {
@@ -197,6 +205,16 @@
     <div class="hourly" id="hourly"></div>
   </section>
 
+  <section class="card" id="radar-card" hidden>
+    <h3>Radar</h3>
+    <div id="radar-map"></div>
+    <div class="radar-bar">
+      <button id="radar-play" aria-label="Play the last two hours">▶</button>
+      <div id="radar-time"></div>
+      <div class="kp-caption">Pinch to zoom</div>
+    </div>
+  </section>
+
   <section class="card" id="daily-card">
     <h3>7-day forecast</h3>
     <div id="daily"></div>
@@ -238,10 +256,12 @@
 
   <footer>
     Weather by <a href="https://open-meteo.com/">Open-Meteo</a> ·
+    Radar by <a href="https://www.rainviewer.com/">RainViewer</a> ·
     Space weather by <a href="https://www.swpc.noaa.gov/">NOAA SWPC</a> ·
     Place names by <a href="https://www.bigdatacloud.com/">BigDataCloud</a>
   </footer>
 </main>
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

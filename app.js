@@ -433,6 +433,87 @@ function renderAll(state) {
   }
 }
 
+// ---------- radar ----------
+
+const RADAR_OPACITY = 0.7;
+let radar = null; // { map, marker, frames, layers, index, timer, playing }
+
+function showRadarFrame(index) {
+  const layer = radar.layers[index];
+  if (!radar.map.hasLayer(layer)) layer.addTo(radar.map);
+  radar.layers.forEach((l, i) => l.setOpacity(i === index ? RADAR_OPACITY : 0));
+  radar.index = index;
+  const latest = index === radar.frames.length - 1;
+  $('radar-time').textContent = `${localTime(radar.frames[index].time * 1000)}${latest ? ' (latest)' : ''}`;
+}
+
+function stopRadar() {
+  if (!radar) return;
+  clearTimeout(radar.timer);
+  radar.playing = false;
+  $('radar-play').textContent = '▶';
+}
+
+function playRadar() {
+  radar.playing = true;
+  $('radar-play').textContent = '⏸';
+  // Put every frame on the map (invisible) so its tiles are loaded before its turn.
+  radar.layers.forEach((l) => { if (!radar.map.hasLayer(l)) l.addTo(radar.map); });
+  const step = () => {
+    showRadarFrame((radar.index + 1) % radar.frames.length);
+    const onLatest = radar.index === radar.frames.length - 1;
+    radar.timer = setTimeout(step, onLatest ? 1800 : 500);
+  };
+  step();
+}
+
+// Rain radar for the last two hours, centred on the user. Skipped quietly when
+// the map library or the radar service can't be reached (e.g. offline).
+async function updateRadar({ lat, lon }) {
+  if (typeof L === 'undefined') return;
+  let data;
+  try {
+    data = await getJson('https://api.rainviewer.com/public/weather-maps.json');
+  } catch {
+    return;
+  }
+  const frames = (data.radar && data.radar.past) || [];
+  if (!frames.length) return;
+
+  $('radar-card').hidden = false;
+  if (!radar) {
+    // One-finger drag stays off on phones so swiping over the map still scrolls the page.
+    const map = L.map('radar-map', { minZoom: 4, maxZoom: 10, dragging: !L.Browser.mobile, scrollWheelZoom: false })
+      .setView([lat, lon], 8);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      className: 'basemap',
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(map);
+    const marker = L.circleMarker([lat, lon], { radius: 6, color: '#fff', weight: 2, fillColor: '#ffd166', fillOpacity: 1 }).addTo(map);
+    radar = { map, marker, frames: [], layers: [], index: 0, timer: null, playing: false };
+  } else {
+    stopRadar();
+    radar.layers.forEach((l) => l.remove());
+    radar.marker.setLatLng([lat, lon]);
+    radar.map.setView([lat, lon], radar.map.getZoom());
+  }
+
+  radar.frames = frames;
+  // RainViewer's free tiles stop at zoom 7; Leaflet stretches them beyond that.
+  radar.layers = frames.map((frame) => L.tileLayer(`${data.host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`, {
+    opacity: 0,
+    maxNativeZoom: 7,
+    maxZoom: 10,
+  }));
+  radar.map.invalidateSize();
+  showRadarFrame(frames.length - 1);
+}
+
+$('radar-play').addEventListener('click', () => {
+  if (!radar) return;
+  if (radar.playing) stopRadar(); else playRadar();
+});
+
 // ---------- refresh ----------
 
 function locationProblem(err) {
@@ -492,6 +573,7 @@ async function refresh() {
     writeStore(STORE_KEY, JSON.stringify(state));
     renderAll(state);
     setStatus(note, Boolean(note));
+    updateRadar(coords);
   } finally {
     busy = false;
     $('refresh').classList.remove('spinning');
@@ -513,7 +595,10 @@ $('space').open = readStore(SPACE_KEY) !== 'no';
 $('space').addEventListener('toggle', () => writeStore(SPACE_KEY, $('space').open ? 'yes' : 'no'));
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible') return;
+  if (document.visibilityState !== 'visible') {
+    stopRadar();
+    return;
+  }
   const saved = loadSaved();
   if (!saved || Date.now() - saved.savedAt > STALE_MS) refresh();
 });
