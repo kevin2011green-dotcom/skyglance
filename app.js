@@ -733,6 +733,25 @@ $('units').addEventListener('click', () => {
   refresh();
 });
 
+// ---------- dad joke ----------
+
+// A fresh joke every time the card is opened; it always starts closed.
+async function tellJoke() {
+  $('joke-text').textContent = 'Thinking of one…';
+  try {
+    const res = await fetch('https://icanhazdadjoke.com/', { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error(`${res.status} from icanhazdadjoke.com`);
+    $('joke-text').textContent = (await res.json()).joke;
+  } catch {
+    $('joke-text').textContent = "Couldn't reach the joke service. Try again when you're online.";
+  }
+}
+
+$('joke').addEventListener('toggle', () => {
+  if ($('joke').open) tellJoke();
+});
+$('joke-next').addEventListener('click', tellJoke);
+
 // Remember whether the space weather section was left open or closed.
 const SPACE_KEY = 'skyglance:space-open';
 $('space').open = readStore(SPACE_KEY) !== 'no';

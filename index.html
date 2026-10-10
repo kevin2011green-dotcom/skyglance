@@ -75,7 +75,7 @@
   @media (prefers-reduced-motion: reduce) {
     #sky .layer, #orb { animation: none !important; }
   }
-  header, .section-title, #space > summary, footer { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45); }
+  header, .section-title, .fold > summary, footer { text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45); }
   .maker { margin-top: 10px; letter-spacing: 0.03em; }
 
   * { box-sizing: border-box; }
@@ -186,8 +186,9 @@
   .radar-bar .kp-caption { margin: 0 0 0 auto; text-align: right; }
 
   .section-title { font-size: 1.05rem; font-weight: 600; margin: 4px 4px 10px; }
-  #space { margin-top: 20px; }
-  #space > summary {
+  .fold { margin-top: 20px; }
+  #joke-text { font-size: 1.1rem; line-height: 1.45; margin-bottom: 14px; white-space: pre-line; }
+  .fold > summary {
     list-style: none;
     display: flex;
     align-items: center;
@@ -200,9 +201,9 @@
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
   }
-  #space > summary::-webkit-details-marker { display: none; }
-  #space > summary::before { content: "▸"; transition: transform 0.15s; }
-  #space[open] > summary::before { transform: rotate(90deg); }
+  .fold > summary::-webkit-details-marker { display: none; }
+  .fold > summary::before { content: "▸"; transition: transform 0.15s; }
+  .fold[open] > summary::before { transform: rotate(90deg); }
   #space-summary { margin-left: auto; font-size: 0.85rem; font-weight: 400; color: var(--muted); }
 
   .flare-chart svg { display: block; width: 100%; height: auto; }
@@ -276,7 +277,7 @@
 
   </section>
 
-  <details id="space" hidden>
+  <details id="space" class="fold" hidden>
   <summary>Space weather <span id="space-summary"></span></summary>
 
   <section class="card" id="kp-card" hidden>
@@ -308,12 +309,21 @@
 
   </details>
 
+  <details id="joke" class="fold">
+  <summary>Dad joke</summary>
+  <section class="card">
+    <div id="joke-text"></div>
+    <button id="joke-next">Another one</button>
+  </section>
+  </details>
+
   <footer>
     Weather by <a href="https://open-meteo.com/">Open-Meteo</a> ·
     Radar by <a href="https://www.rainviewer.com/">RainViewer</a> ·
     Space weather by <a href="https://www.swpc.noaa.gov/">NOAA SWPC</a> ·
-    Place names by <a href="https://www.bigdatacloud.com/">BigDataCloud</a>
-    <div class="maker">Built by Kevin with Claude · October 2026 · v1.4</div>
+    Place names by <a href="https://www.bigdatacloud.com/">BigDataCloud</a> ·
+    Jokes by <a href="https://icanhazdadjoke.com/">icanhazdadjoke</a>
+    <div class="maker">Built by Kevin with Claude · October 2026 · v1.5</div>
   </footer>
 </main>
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>

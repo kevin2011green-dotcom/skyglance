@@ -1,6 +1,6 @@
 // Keeps a copy of the app's own files so it opens without a connection.
 // Weather data is not cached here; app.js keeps the last forecast in localStorage.
-const CACHE = 'skyglance-shell-v4';
+const CACHE = 'skyglance-shell-v5';
 const SHELL = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {
