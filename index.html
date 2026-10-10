@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Skyglance</title>
+<meta name="description" content="Local weather and aurora activity for wherever you are.">
+<meta name="theme-color" content="#0f1b33">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<style>
+  :root {
+    --bg-top: #0f1b33;
+    --bg-bottom: #1d2f55;
+    --card: rgba(255, 255, 255, 0.09);
+    --card-border: rgba(255, 255, 255, 0.14);
+    --text: #f3f6fc;
+    --muted: #b3c0d9;
+    --accent: #ffd166;
+    --kp-quiet: #5ad19a;
+    --kp-active: #ffd166;
+    --kp-storm: #ff7b6b;
+  }
+  body.day {
+    --bg-top: #2a6fc4;
+    --bg-bottom: #6fb1e8;
+    --card: rgba(255, 255, 255, 0.17);
+    --card-border: rgba(255, 255, 255, 0.28);
+    --muted: #e1ecfa;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg-top); }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    background: linear-gradient(var(--bg-top), var(--bg-bottom)) fixed;
+    -webkit-font-smoothing: antialiased;
+  }
+  main {
+    max-width: 520px;
+    margin: 0 auto;
+    padding: calc(16px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
+  }
+  header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  header .where { flex: 1; min-width: 0; }
+  #place { font-size: 1.35rem; font-weight: 600; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #updated { font-size: 0.8rem; color: var(--muted); }
+  button {
+    font: inherit;
+    color: var(--text);
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 999px;
+    min-width: 44px;
+    height: 44px;
+    padding: 0 14px;
+    cursor: pointer;
+  }
+  button:active { transform: scale(0.96); }
+  button.spinning span { display: inline-block; animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #status {
+    display: none;
+    margin-bottom: 12px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    font-size: 0.9rem;
+  }
+  #status.show { display: block; }
+  #status.error { border-color: var(--kp-storm); }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 18px;
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .card h2 {
+    margin: 0 0 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .now { display: flex; align-items: center; gap: 14px; }
+  .now .icon { font-size: 4rem; line-height: 1; }
+  .now .temp { font-size: 4rem; font-weight: 200; line-height: 1; }
+  .now .desc { font-size: 1.05rem; margin-top: 4px; }
+  .now .sub { font-size: 0.85rem; color: var(--muted); margin-top: 2px; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 8px; margin-top: 16px; }
+  .stat .label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat .value { font-size: 1rem; margin-top: 2px; }
+
+  .hourly { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  .hourly::-webkit-scrollbar { display: none; }
+  .hour { flex: 0 0 54px; text-align: center; font-size: 0.85rem; }
+  .hour .t { color: var(--muted); font-size: 0.75rem; }
+  .hour .i { font-size: 1.4rem; margin: 4px 0; }
+  .hour .p { color: var(--muted); font-size: 0.72rem; min-height: 1em; }
+
+  .day-row { display: grid; grid-template-columns: 3.2em 2em 3em 1fr; align-items: center; gap: 8px; padding: 7px 0; }
+  .day-row + .day-row { border-top: 1px solid var(--card-border); }
+  .day-row .i { font-size: 1.25rem; text-align: center; }
+  .day-row .p { color: var(--muted); font-size: 0.78rem; }
+  .day-row .range { display: flex; align-items: center; gap: 8px; font-variant-numeric: tabular-nums; }
+  .day-row .lo { color: var(--muted); width: 2.4em; text-align: right; }
+  .day-row .hi { width: 2.4em; }
+  .day-row .track { flex: 1; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.15); position: relative; }
+  .day-row .fill { position: absolute; top: 0; bottom: 0; border-radius: 3px; background: linear-gradient(90deg, #7fc8ff, var(--accent)); }
+
+  .kp-head { display: flex; align-items: baseline; gap: 10px; }
+  .kp-value { font-size: 2.6rem; font-weight: 300; line-height: 1; }
+  .kp-level { font-size: 1rem; font-weight: 600; }
+  .kp-hint { font-size: 0.88rem; color: var(--muted); margin: 6px 0 14px; }
+  .kp-chart { display: flex; align-items: flex-end; gap: 3px; height: 90px; }
+  .kp-bar { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 100%; }
+  .kp-bar .bar { width: 100%; border-radius: 3px 3px 0 0; min-height: 2px; }
+  .kp-bar.predicted .bar { opacity: 0.45; }
+  .kp-bar.first-predicted { border-left: 1px dashed var(--muted); padding-left: 3px; }
+  .kp-labels { display: flex; gap: 3px; margin-top: 4px; }
+  .kp-labels span { flex: 1; text-align: center; font-size: 0.62rem; color: var(--muted); }
+  .kp-caption { font-size: 0.75rem; color: var(--muted); margin-top: 8px; }
+
+  footer { text-align: center; font-size: 0.72rem; color: var(--muted); margin-top: 18px; }
+  footer a { color: inherit; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="where">
+      <h1 id="place">Skyglance</h1>
+      <div id="updated">&nbsp;</div>
+    </div>
+    <button id="units" aria-label="Switch units">°F</button>
+    <button id="refresh" aria-label="Refresh"><span>↻</span></button>
+  </header>
+
+  <div id="status" role="status"></div>
+
+  <section class="card" id="current" hidden>
+    <div class="now">
+      <div class="icon" id="now-icon"></div>
+      <div>
+        <div class="temp" id="now-temp"></div>
+        <div class="desc" id="now-desc"></div>
+        <div class="sub" id="now-sub"></div>
+      </div>
+    </div>
+    <div class="stats" id="stats"></div>
+  </section>
+
+  <section class="card" id="hourly-card" hidden>
+    <h2>Next 24 hours</h2>
+    <div class="hourly" id="hourly"></div>
+  </section>
+
+  <section class="card" id="daily-card" hidden>
+    <h2>7-day forecast</h2>
+    <div id="daily"></div>
+  </section>
+
+  <section class="card" id="kp-card" hidden>
+    <h2>Aurora activity (Kp index)</h2>
+    <div class="kp-head">
+      <div class="kp-value" id="kp-value"></div>
+      <div class="kp-level" id="kp-level"></div>
+    </div>
+    <div class="kp-hint" id="kp-hint"></div>
+    <div class="kp-chart" id="kp-chart"></div>
+    <div class="kp-labels" id="kp-labels"></div>
+    <div class="kp-caption">Last 24 hours, then NOAA's forecast for the next 24 (faded). Times are local.</div>
+  </section>
+
+  <footer>
+    Weather by <a href="https://open-meteo.com/">Open-Meteo</a> ·
+    Kp index by <a href="https://www.swpc.noaa.gov/">NOAA SWPC</a> ·
+    Place names by <a href="https://www.bigdatacloud.com/">BigDataCloud</a>
+  </footer>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
